@@ -1,0 +1,119 @@
+---
+title: "Practical Machine Learning Final Project"
+---
+
+### Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+### Aims
+
+The goal of your project is to predict the manner in which they did the exercise - the "classe" variable in the training set.
+
+### Downloading the data
+
+```{r}
+trainUrl <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainFile <- "./data/pml-training.csv"
+tstFile  <- "./data/pml-testing.csv"
+if (!file.exists("./data")) {
+  dir.create("./data")
+}
+if (!file.exists(trainFile)) {
+  download.file(trainUrl, 
+                destfile=trainFile, 
+                method="curl")
+}
+if (!file.exists(tstFile)) {
+  download.file(testUrl, 
+                destfile=tstFile, 
+                method="curl")
+}
+
+# Read in data
+
+train <- read.csv("./data/pml-training.csv")
+test <- read.csv("./data/pml-testing.csv")
+dim(train)
+dim(test)
+```
+
+We have successfully loaded in the training and test data sets. Both datasets contain 160 variables, training set has 19622 logs and test set has 20 logs.
+
+### Data processing
+
+Cleaning the datasets from missing values and irrelevant columns
+```{r}
+
+# Remove missing value containing columns
+
+train <- train[, colSums(is.na(train)) == 0] 
+test <- test[, colSums(is.na(test)) == 0] 
+
+# From variable in both training and test sets, remove these unrelated to
+# accelometer output (e.g. timestamp, window)
+
+classe <- train$classe
+train_out <- grepl("X|timestamp|window", names(train))
+train <- train[,!train_out]
+
+train <- train[,sapply(train, is.numeric)]
+train$classe <- classe
+
+test_out <- grepl("X|timestamp|window", names(test))
+test <- test[,!test_out]
+
+test <- test[,sapply(test, is.numeric)]
+# remove "problem_id" variable
+test <- test[, -length(names(test))]
+
+```
+Dividing training set into 70% training set and 30% validation set.
+```{r}
+library(caret)
+
+set.seed(77633)
+inTrain <- createDataPartition(train$classe, p=0.70, list = F)
+training <- train[inTrain,]
+testing <- train[-inTrain,]
+```
+
+### Establishing a Predictive Model
+
+To predict the "classe" variable I chose to used a robust, decision-tree based Random Forest model, and random assignment of the original sample to five different datasets for the cross-validation.
+```{r}
+#cv resampling into 5 subsets
+control <- trainControl(method="cv", 5)
+fitRf <- train(classe ~ ., data=training, method="rf", trControl=control, ntree=250)
+
+fitRf
+
+# Fit performance assessment on validation set
+
+predict <- predict(fitRf, testing)
+confusionMatrix(testing$classe, predict)
+
+# Accuracy calculation
+
+accuracy <- postResample(predict, testing$classe)
+accuracy
+
+# Out of sample error
+1 - as.numeric(confusionMatrix(testing$classe, predict)$overall[1])
+```
+Estimated accuracy of the random forest fit for the training set is 0.9942%.
+Estimated out of sample error is 0.0058% .
+
+### Applying the model to test dataset
+
+```{r}
+result <- predict(fitRf, test)
+result
+```
+
+### Conclusions
+The random forest algorithm perfomed very well in predicting the type of activities from accelerometer measurements.
